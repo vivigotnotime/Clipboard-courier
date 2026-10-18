@@ -1,0 +1,35 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.hypothesis/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Courier secrets: never commit these ---
+*.pem
+*.key
+*.p8
+*.p12
+*.csr
+*.crl
+keys/
+certs/
+ca-data/
+
+# --- Local runtime state ---
+*.db
+*.sqlite3
+*.log
+captures/
+received/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
