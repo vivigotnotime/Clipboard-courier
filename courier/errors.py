@@ -27,4 +27,12 @@ class WrongPassphraseError(KeyStoreError):
 
 
 class KeyLoadError(KeyStoreError):
-    """A key file is missing, unencrypted, corrupt, or the wrong kind of key."""
+    """A key file is missing, malformed, for the wrong purpose, or the wrong kind of key."""
+
+
+class CertificateError(CourierError):
+    """A certificate file is missing or malformed, or a certificate fails a check."""
+
+
+class CAError(CourierError):
+    """A certificate-authority operation cannot be carried out."""

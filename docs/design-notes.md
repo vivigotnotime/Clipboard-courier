@@ -236,14 +236,21 @@ Images: verify first, decode second. Use `QImageReader` with `setAllocationLimit
 
 - Location: `~/.local/share/courier/` (dir `0700`, files `0600`), layout:
   ```
-  keys/tls.key  keys/sign.key  keys/enc.key   # encrypted PKCS#8
+  keys/tls.key  keys/sign.key  keys/enc.key   # Courier encrypted key format
   certs/tls.crt certs/sign.crt certs/enc.crt certs/ca.crt
   state/crl.pem  state/crl_number            # latest accepted CRL and its number
   state/replay.sqlite3
   logs/courier.log
   ```
-- Private keys: PKCS#8 with `BestAvailableEncryption(passphrase)`. One passphrase unlocks all three. **To do during implementation:** record exactly which KDF and cipher the installed `cryptography` version uses, for the report.
-- On startup the code refuses to load keys if file permissions are wider than `0600`.
+- Private keys use a **Courier encrypted key format** rather than the library's encrypted PKCS#8, because the library's PKCS#8 export uses PBKDF2-HMAC-SHA256 with only 2,048 iterations and does not let the cost be raised:
+  - **KDF:** scrypt, N = 2¹⁷, r = 8, p = 1 (128 MiB of memory and about 0.35 s per guess), 16-byte random salt, 32-byte output.
+  - **Cipher:** AES-256-GCM with a 12-byte random nonce; the plaintext is the PKCS#8 DER of the key.
+  - **Header** (fixed binary layout): magic `CCKEY`, version, **label** (`tls`, `sign`, `enc`, `relay-tls` or `ca`), scrypt parameters, salt, nonce. The whole header is the GCM associated data, so changing the label, parameters, salt or nonce is detected.
+  - The caller states which label it expects, so a key file swapped for another (for example `enc.key` copied over `sign.key`) is refused.
+  - Files whose scrypt cost is below 2¹⁴ or above 2²⁰, or with other r or p values, are refused. This blocks both weakened files and files built to exhaust memory.
+  - The armored file starts `-----BEGIN COURIER ENCRYPTED KEY-----`; salt and nonce are fresh on every save.
+- One passphrase (at least 8 characters) unlocks all three device keys.
+- Loading refuses symbolic links, files or directories not owned by the user, file permissions wider than `0600` and directory permissions wider than `0700`. Files are written atomically and created with their final permissions.
 - **Unlock** loads keys into memory for the session. **Lock** drops references, closes the relay connection and disables send/receive until re-unlock. Python cannot guarantee memory is wiped; this is a documented limitation.
 - CA key: same encryption scheme, separate passphrase, separate directory (`ca-data/`, git-ignored).
 
@@ -324,7 +331,7 @@ Opening an archived bundle **does not resend it**, does not apply the five-minut
 | T15 | Trust anchor substituted at enrollment | Out-of-band CA fingerprint check; relay cannot install `ca.crt` | Wrong `ca.crt` refused at enrollment |
 | T16 | Key used for the wrong purpose | Separate keys, EKU enforced | TLS cert as signing cert rejected |
 | T17 | Malformed / huge input (DoS, decoder bugs) | Size limits, strict decoding, image limits after verification | Duplicate keys, trailing bytes, tags, oversize all rejected |
-| T18 | Stolen key files at rest | Encrypted PKCS#8, file permissions | Wrong passphrase fails to load |
+| T18 | Stolen key files at rest | scrypt + AES-256-GCM key files, file permissions | Wrong passphrase, tampered file and swapped key file all fail to load |
 | T19 | Relay falsely reports delivery | `ACK` defined as relay-only; UI says "Sent to relay" | Documented; receipts deferred |
 | T20 | Backdated bundle signed with a stolen key | Verify reports current cert status; time labeled sender-asserted | Revoked-signer bundle flagged |
 
